@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 import { Message } from '@/features/messages/messages'
 import { Viewer } from '../vrmViewer/viewer'
 import { messageSelectors } from '../messages/messageSelectors'
-import { Live2DModel } from 'pixi-live2d-display-lipsyncpatch'
+// import { Live2DModel } from 'pixi-live2d-display-lipsyncpatch'
 import { generateMessageId } from '@/utils/messageUtils'
 
 export interface PersistedState {
@@ -46,7 +46,10 @@ let shouldCreateNewFile = false
 
 // ログ保存状態をリセットする共通関数
 const resetSaveState = () => {
-  console.log('Chat log was cleared, resetting save state.')
+  console.log('[CHAT_HISTORY] Chat log was cleared, resetting save state:', {
+    previousSavedLength: lastSavedLogLength,
+    willCreateNewFile: true,
+  })
   lastSavedLogLength = 0
   shouldCreateNewFile = true
   if (saveDebounceTimer) {
@@ -56,7 +59,7 @@ const resetSaveState = () => {
 
 const homeStore = create<HomeState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // persisted states
       userOnboarded: false,
       chatLog: [],
@@ -87,6 +90,18 @@ const homeStore = create<HomeState>()(
             (msg) => msg.id === messageId
           )
 
+          console.log('[CHAT_HISTORY] upsertMessage called:', {
+            messageId,
+            role: message.role,
+            content:
+              typeof message.content === 'string'
+                ? message.content.substring(0, 100) +
+                  (message.content.length > 100 ? '...' : '')
+                : message.content,
+            existingIndex: existingMessageIndex,
+            currentLogLength: currentChatLog.length,
+          })
+
           let updatedChatLog: Message[]
 
           if (existingMessageIndex > -1) {
@@ -98,11 +113,13 @@ const homeStore = create<HomeState>()(
               ...message,
               id: messageId,
             }
-            console.log(`Message updated: ID=${messageId}`)
+            console.log(
+              `[CHAT_HISTORY] Message updated: ID=${messageId}, Role=${message.role}`
+            )
           } else {
             if (!message.role || message.content === undefined) {
               console.error(
-                'Cannot add message without role or content',
+                '[CHAT_HISTORY] Cannot add message without role or content',
                 message
               )
               return { chatLog: currentChatLog }
@@ -115,8 +132,16 @@ const homeStore = create<HomeState>()(
               ...(message.timestamp && { timestamp: message.timestamp }),
             }
             updatedChatLog = [...currentChatLog, newMessage]
-            console.log(`Message added: ID=${messageId}`)
+            console.log(
+              `[CHAT_HISTORY] Message added: ID=${messageId}, Role=${message.role}`
+            )
           }
+
+          console.log('[CHAT_HISTORY] Chat log updated:', {
+            previousLength: currentChatLog.length,
+            newLength: updatedChatLog.length,
+            totalMessages: updatedChatLog.length,
+          })
 
           return { chatLog: updatedChatLog }
         })
@@ -144,7 +169,18 @@ const homeStore = create<HomeState>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           lastSavedLogLength = state.chatLog.length
-          console.log('Rehydrated chat log length:', lastSavedLogLength)
+          console.log('[CHAT_HISTORY] Rehydrated chat log:', {
+            length: lastSavedLogLength,
+            messages: state.chatLog.map((msg) => ({
+              id: msg.id,
+              role: msg.role,
+              contentPreview:
+                typeof msg.content === 'string'
+                  ? msg.content.substring(0, 50) +
+                    (msg.content.length > 50 ? '...' : '')
+                  : '[object]',
+            })),
+          })
         }
       },
     }
@@ -154,7 +190,15 @@ const homeStore = create<HomeState>()(
 // chatLogの変更を監視して差分を保存
 homeStore.subscribe((state, prevState) => {
   if (state.chatLog !== prevState.chatLog && state.chatLog.length > 0) {
+    console.log('[CHAT_HISTORY] Chat log changed:', {
+      previousLength: prevState.chatLog.length,
+      currentLength: state.chatLog.length,
+      lastSavedLength: lastSavedLogLength,
+      shouldCreateNewFile,
+    })
+
     if (lastSavedLogLength > state.chatLog.length) {
+      console.log('[CHAT_HISTORY] Chat log was cleared, resetting save state')
       resetSaveState()
     }
 
@@ -171,12 +215,28 @@ homeStore.subscribe((state, prevState) => {
             msg.content // 更新分
       )
 
+      console.log('[CHAT_HISTORY] Messages to save:', {
+        totalMessages: state.chatLog.length,
+        newMessagesCount: newMessagesToSave.length,
+        messageDetails: newMessagesToSave.map((msg) => ({
+          id: msg.id,
+          role: msg.role,
+          contentPreview:
+            typeof msg.content === 'string'
+              ? msg.content.substring(0, 100) +
+                (msg.content.length > 100 ? '...' : '')
+              : '[object]',
+        })),
+      })
+
       if (newMessagesToSave.length > 0) {
         const processedMessages = newMessagesToSave.map((msg) =>
           messageSelectors.sanitizeMessageForStorage(msg)
         )
 
-        console.log(`Saving ${processedMessages.length} new messages...`)
+        console.log(
+          `[CHAT_HISTORY] Saving ${processedMessages.length} new messages to API...`
+        )
 
         void fetch('/api/save-chat-log', {
           method: 'POST',
@@ -194,24 +254,31 @@ homeStore.subscribe((state, prevState) => {
               // 新規ファイルが作成された場合はフラグをリセット
               shouldCreateNewFile = false
               console.log(
-                'Messages saved successfully. New saved length:',
+                '[CHAT_HISTORY] Messages saved successfully. New saved length:',
                 lastSavedLogLength
               )
             } else {
-              console.error('Failed to save chat log:', response.statusText)
+              console.error(
+                '[CHAT_HISTORY] Failed to save chat log:',
+                response.statusText
+              )
             }
           })
           .catch((error) => {
-            console.error('チャットログの保存中にエラーが発生しました:', error)
+            console.error(
+              '[CHAT_HISTORY] チャットログの保存中にエラーが発生しました:',
+              error
+            )
           })
       } else {
-        console.log('No new messages to save.')
+        console.log('[CHAT_HISTORY] No new messages to save.')
       }
     }, SAVE_DEBOUNCE_DELAY)
   } else if (
     state.chatLog !== prevState.chatLog &&
     state.chatLog.length === 0
   ) {
+    console.log('[CHAT_HISTORY] Chat log cleared, resetting save state')
     resetSaveState()
   }
 })

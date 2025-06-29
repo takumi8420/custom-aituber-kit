@@ -12,7 +12,8 @@
       "Bash(npm rebuild:*)",
       "mcp__ide__getDiagnostics",
       "Bash(npm run dev:*)",
-      "Bash(npm run typecheck:*)"
+      "Bash(npm run typecheck:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

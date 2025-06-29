@@ -272,6 +272,11 @@ export const speakMessageHandler = async (receivedMessage: string) => {
  */
 export const processAIResponse = async (messages: Message[]) => {
   const sessionId = generateSessionId()
+  console.log('[CHAT_HISTORY] processAIResponse started:', {
+    sessionId,
+    messageCount: messages.length,
+    systemPrompt: messages.find(m => m.role === 'system')?.content ? 'present' : 'missing'
+  })
   homeStore.setState({ chatProcessing: true })
   let stream
 
@@ -316,6 +321,10 @@ export const processAIResponse = async (messages: Message[]) => {
         if (currentMessageId === null) {
           currentMessageId = generateMessageId()
           currentMessageContent = textToAdd
+          console.log('[CHAT_HISTORY] Creating new assistant message:', {
+            messageId: currentMessageId,
+            initialContent: textToAdd.substring(0, 50) + (textToAdd.length > 50 ? '...' : '')
+          })
           if (currentMessageContent) {
             homeStore.getState().upsertMessage({
               id: currentMessageId,
@@ -325,6 +334,11 @@ export const processAIResponse = async (messages: Message[]) => {
           }
         } else if (!isCodeBlock) {
           currentMessageContent += textToAdd
+          console.log('[CHAT_HISTORY] Updating assistant message:', {
+            messageId: currentMessageId,
+            addedText: textToAdd.substring(0, 50) + (textToAdd.length > 50 ? '...' : ''),
+            totalLength: currentMessageContent.length
+          })
 
           if (textToAdd) {
             homeStore.getState().upsertMessage({
@@ -580,6 +594,12 @@ export const handleSendChatFn = () => async (text: string) => {
   const newMessage = text
   const timestamp = new Date().toISOString()
 
+  console.log('[CHAT_HISTORY] handleSendChatFn called:', {
+    sessionId,
+    userMessage: newMessage.substring(0, 100) + (newMessage.length > 100 ? '...' : ''),
+    timestamp
+  })
+
   if (newMessage === null) return
 
   const ss = settingsStore.getState()
@@ -667,6 +687,11 @@ export const handleSendChatFn = () => async (text: string) => {
         ]
       : newMessage
 
+    console.log('[CHAT_HISTORY] Adding user message to chat log:', {
+      messageType: modalImage ? 'multimodal' : 'text',
+      hasImage: !!modalImage
+    })
+
     homeStore.getState().upsertMessage({
       role: 'user',
       content: userMessageContent,
@@ -678,6 +703,7 @@ export const handleSendChatFn = () => async (text: string) => {
     }
 
     const currentChatLog = homeStore.getState().chatLog
+    console.log('[CHAT_HISTORY] Current chat log length:', currentChatLog.length)
 
     const messages: Message[] = [
       {
@@ -690,10 +716,17 @@ export const handleSendChatFn = () => async (text: string) => {
       ),
     ]
 
+    console.log('[CHAT_HISTORY] Prepared messages for AI:', {
+      totalMessages: messages.length,
+      systemMessage: messages[0].role === 'system' ? 'present' : 'missing',
+      userMessages: messages.filter(m => m.role === 'user').length,
+      assistantMessages: messages.filter(m => m.role === 'assistant').length
+    })
+
     try {
       await processAIResponse(messages)
     } catch (e) {
-      console.error(e)
+      console.error('[CHAT_HISTORY] Error in processAIResponse:', e)
       homeStore.setState({ chatProcessing: false })
     }
   }
