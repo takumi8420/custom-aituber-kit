@@ -299,6 +299,42 @@ export default async function handler(
         }
 
         console.log('[CHAT_HISTORY] Successfully saved to Development Supabase')
+
+        // Send request to auto-comment endpoint after successful insert
+        if (process.env.NEXT_PUBLIC_YOUTUBE_LIVE_ID) {
+          try {
+            console.log('[CHAT_HISTORY] Sending auto-comment request...')
+            const autoCommentResponse = await fetch(
+              'http://13.231.143.248:5000/youtube/auto-comment',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  video_id: process.env.NEXT_PUBLIC_YOUTUBE_LIVE_ID,
+                }),
+              }
+            )
+
+            if (!autoCommentResponse.ok) {
+              console.error(
+                '[CHAT_HISTORY] Auto-comment request failed:',
+                autoCommentResponse.status,
+                autoCommentResponse.statusText
+              )
+            } else {
+              console.log(
+                '[CHAT_HISTORY] Auto-comment request sent successfully'
+              )
+            }
+          } catch (autoCommentError) {
+            console.error(
+              '[CHAT_HISTORY] Error sending auto-comment request:',
+              autoCommentError
+            )
+          }
+        }
       } catch (devError) {
         console.error(
           '[CHAT_HISTORY] Development Supabase save error:',

@@ -13,7 +13,9 @@
       "mcp__ide__getDiagnostics",
       "Bash(npm run dev:*)",
       "Bash(npm run typecheck:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": []
   }
